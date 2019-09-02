@@ -1,0 +1,376 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar 21 16:52:10 2019
+
+@author: dongren
+"""
+
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 13 15:27:02 2019
+
+@author: dongren
+"""
+
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 13 09:46:13 2019
+
+@author: dongren
+"""
+
+import os
+from PIL import Image
+import numpy as np
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+import pickle 
+import datetime
+import math
+import scipy
+import numpy
+from scipy.special import boxcox, inv_boxcox
+
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Activation, Flatten
+from keras.layers import Conv3D, MaxPooling3D, AveragePooling3D, Conv2D, MaxPooling2D, AveragePooling2D
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+from sklearn import metrics
+import keras
+from keras.optimizers import SGD, Adadelta, Adagrad
+from sklearn import preprocessing 
+
+#####################path
+y_var_path="/home/dongren/deep_learning/new_input_data/y_var/obs"
+x_var_path="/home/dongren/deep_learning/new_input_data/x_var"
+
+y_path=os.listdir(y_var_path)
+y_path.sort(key=lambda x:int(x[:-4]))
+x_path=os.listdir(x_var_path)
+x_path.sort()
+
+x_train= np.zeros((367080,19,19,7),dtype='float32')   ############full grids with nan 19*19
+x_train= np.zeros((217224,25,25,11),dtype='float32')   ############size 25*25
+x_train= np.zeros((241452,19,19,7),dtype='float32')   ############size 19*19
+x_train= np.zeros((254831,15,15,7),dtype='float32')   ############size 15*15
+x_train= np.zeros((262644,13,13,7),dtype='float32')   ############size 13*13
+x_train= np.zeros((192627,33,33,11),dtype='float32') 
+g=-1  ###########因为设置h=1作为初始的等差数列
+c=-1
+start = datetime.datetime.now()
+for m in range(0, len(x_path)):
+   # m=0
+    x_imgs = x_var_path+ '/' + x_path[m]
+    x_data= os.listdir(x_imgs)       
+    x_data.sort(key=lambda x:int(x[:-4]))
+    for j in range(0, len(x_data)):
+        #j=0
+         y_var=y_var_path+'/'+ y_path[j]
+         y_im= Image.open(y_var)
+         x_var=Image.open(x_imgs+ "/" + x_data[j])
+         x_im = np.array(x_var)       
+         arr= np.array(y_im,dtype="float32")    #select central point
+         num = np.where(arr >=0) 
+         row, col=num[0], num[1]         
+         for i in range(0, len(row)):
+            #i=1             
+             if g >= 367079:
+                 g=-1         
+             h = 1
+             g += h
+             i_row = row[i,]
+             i_col = col[i,]   
+             slice = x_var.crop((i_col-16, i_row-16, i_col+17, i_row+17))  ##extract y from x one by one 
+             slice_arr= np.array(slice, dtype="float32")
+             where_nan = np.where(slice_arr <= -0.1e+30)
+             if len(where_nan[0]) == 0:
+                 if c >= 192626:
+                     c=-1
+                 q=1
+                 c += q
+                 x_train[c,:,:,m]= slice_arr
+
+
+x_t=x_train[:,:,:,9]
+
+
+#print("running time of x_train:",end-start)
+#x_train=x_train.astype('float32')
+def ZsocreNormalization(x):
+    x= ( x-np.mean(x))/ np.std(x)
+    return(x)
+
+x_train_s = np.zeros((217224,25,25,11),dtype='float32')
+x_train_s = np.zeros((254831,15,15,7),dtype='float32')
+x_train_s = np.zeros((192627,33,33,11),dtype='float32')
+for k in range(0, 11):
+   # k=3
+    x_train_p = x_train[:,:,:,k]
+    if k == 4:
+        x_train_p = x_train_p[:]/1e+13
+    elif k == 6:
+        where_zero = np.where(x_train_p [::] == 0)
+        x_train_p [where_zero] = 1e-9
+        x_train_p = numpy.log10(x_train_p[::])
+    x_train_p = np.ravel(x_train_p)
+    x_train_p = ZsocreNormalization(x_train_p)
+    #x_train_p = preprocessing.scale(x_train_p[::]) 
+    x_train_p = numpy.array(x_train_p).reshape(192627,33,33)
+    x_train_s[:,:,:,k] = x_train_p
+
+print(x_train_s)
+
+#mm_1=x_train[:,:,:,0]
+#mm_1=preprocessing.scale(mm_1[:]) 
+#mm_3 = x_train[:,:,:,2]
+#mmm_3=numpy.log10(mm_3[:])
+#
+#m=boxcox(x_train[:,:,:,1])
+#m_3=boxcox(x_train[:,:,:,3],2.5)
+#
+#mm_1= mm_1[:]/1e+13
+#gg=np.ravel(mm_1)
+#gg_1=preprocessing.scale(gg[:]) 
+#ggg_1=numpy.array(gg).reshape(241452,19,19)
+
+
+#################################################y_train
+#y_empty = np.empty(shape = [0,1], dtype='float32')
+y_train= np.zeros(( 367080,1 ),dtype='float32')
+y_train= np.zeros(( 217224,1 ),dtype='float32')
+y_train= np.zeros(( 241452,1 ),dtype='float32')
+y_train= np.zeros(( 262644,1 ),dtype='float32')
+y_train= np.zeros(( 254831,1 ),dtype='float32')
+y_train= np.zeros(( 192627,1 ),dtype='float32')
+for n in range(0, len(y_path)):
+        # n=0
+         x_var=Image.open("/home/dongren/deep_learning/new_input_data/x_var/omi/" + x_data[j])
+         x_im = np.array(x_var)   
+         y_var=y_var_path+'/'+ y_path[n]
+         y_im= Image.open(y_var)   
+         arr= np.array(y_im,dtype="float32")
+         num = np.where(arr >=0) 	 
+         row, col=num[0], num[1]
+         for k in range(0, len(row)):
+             # k=0 
+             if g>= 367079:
+                 g=-1
+             h=1
+             g += h
+             i_row = row[k,]
+             i_col = col[k,]
+             slice = arr[i_row, i_col]
+             slice_arr = np.array(slice)
+             slice_y= x_var.crop((i_col-16, i_row-16, i_col+17, i_row+17))
+             slice_arr_y= np.array(slice_y, dtype="float32")
+             where_nan = np.where(slice_arr_y < -0.1e+30)
+             if len(where_nan[0]) == 0:
+                 if c >= 192626:
+                     c=-1
+                 q = 1
+                 c += q
+             y_train[c,:] = slice_arr  
+
+##################################data processing 
+x_train_s= np.zeros((367080,19,19,7),dtype='float32')
+y_train_s= np.zeros((367080,1) ,dtype='float32')
+y_train_s= np.zeros((217224,1) ,dtype='float32')
+y_train_s= np.zeros((262644,1) ,dtype='float32')
+y_train_s= np.zeros((254831,1 ),dtype='float32')
+y_train_s= np.zeros((192627,1 ),dtype='float32')
+y_train_s= numpy.log10(y_train[:])
+y_train_s= ZsocreNormalization(y_train[:])
+
+
+###################SAVE data
+with open(r'/home/dongren/deep_learning/data/reduced/x_train_nodeal.pickle','wb') as x_train_save:
+    pickle.dump(x_train, x_train_save)    
+
+with open(r'/home/dongren/deep_learning/data/reduced/25/x_train_deal.pickle','wb') as x_train_save:
+    pickle.dump(x_train_s, x_train_save)
+    
+with open(r'/home/dongren/deep_learning/data/reduced/25/y_train_deal.pickle','wb') as y_train_save:
+    pickle.dump(y_train_s, y_train_save)
+
+######################load data
+with open(r'/home/dongren/deep_learning/data/reduced/x_train_deal.pickle','rb') as x_train_load:
+    x_train_s=pickle.load(x_train_load)
+    
+with open(r'/home/dongren/deep_learning/data/reduced/25/y_train_deal.pickle','rb') as y_train_load:
+    y_train_s=pickle.load(y_train_load)
+
+
+# generate the shulle/training index/validation index pickle data (already done)
+
+num = len(x_train_s)
+shuffle = np.random.choice(num,num,replace=False)
+with open(r'/home/ruixin/work/NDVI/Master_Degree/data/pickle_data/S30/hit_initial_shuffle.pickle', 'wb') as shuffle_save:
+    pickle.dump(shuffle, shuffle_save)
+
+# x = x[shuffle,:,:,:]
+# y_spot = y_spot[shuffle,:]
+
+index = np.arange(num)
+validation_index = np.random.choice(num,20000,replace=False)
+training_index = np.delete(index,validation_index)
+with open(r'/home/ruixin/work/NDVI/Master_Degree/data/pickle_data/S30/hit_validation_index.pickle', 'wb') as validation_index_save:
+    pickle.dump(validation_index, validation_index_save)
+with open(r'/home/ruixin/work/NDVI/Master_Degree/data/pickle_data/S30/hit_training_index.pickle', 'wb') as training_index_save:
+    pickle.dump(training_index, training_index_save)
+
+with open(r'/home/ruixin/work/NDVI/Master_Degree/data/pickle_data/S30/hit_raw_proba_s30.pickle', 'rb') as y_proba_load:
+    y_proba = pickle.load(y_proba_load)
+y_proba = y_proba.astype('float16')
+
+ x_train_1 = x_train_s[training_index,:,:,:]
+ y_train_1 = y_train_s[training_index,:] 
+ x_val = x_train_s[validation_index,:,:,:]
+ y_val = y_train_s[validation_index,:]
+
+
+# 【建立模型并训练】
+model = Sequential()
+model.add(Conv2D(48, (9,9), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True, input_shape = (25, 25, 11)))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(32, (7,7), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(16, (5,5), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(1, (3,3), strides = (1,1), padding = 'valid', activation = 'sigmoid', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+
+model.add(Flatten())
+model.add(Dense(500, activation = 'relu'))
+##model.add(Dropout(0.25))
+model.add(Dense(100, activation = 'relu'))
+##model.add(Dropout(0.25))
+model.add(Dense(20, activation = 'linear'))
+#model.add(Dropout(0.25))
+model.add(Dense(1, activation = 'linear'))
+#model.add(Activation('sigmoid'))
+#sgd = SGD(lr=0.05, decay=1e-6, momentum=0.9, nesterov=True)
+model.compile(optimizer = 'adam', loss = 'mean_squared_error')
+model.fit(x_train_1, y_train_1, batch_size = 125, epochs = 40, verbose = 2, callbacks = None, validation_split = 0.2, shuffle = True )
+
+########
+model = Sequential()
+model.add(Conv2D(48, (9,9), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True, input_shape = (25, 25, 11)))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(32, (7,7), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(16, (5,5), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Dropout(0.25))
+model.add(Conv2D(1, (3,3), strides = (1,1), padding = 'valid', activation = 'sigmoid', use_bias = True))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+model.add(Flatten())
+
+model.add(Dense(290, activation = 'relu'))
+#model.add(Dropout(0.25))
+model.add(Dense(100, activation = 'relu'))
+#model.add(Dropout(0.25))
+model.add(Dense(20, activation = 'linear'))
+#model.add(Dropout(0.25))
+model.add(Dense(1, activation = 'linear'))
+#model.add(Activation('sigmoid'))
+#sgd = SGD(lr=0.05, decay=1e-6, momentum=0.9, nesterov=True)
+model.compile(optimizer = 'sgd', loss = 'mean_squared_error')
+model.fit(x_train_s, y_train_s, batch_size = 125, epochs = 30, verbose = 2, callbacks = None, validation_split = 0.2, shuffle = True )
+
+
+########
+model = Sequential()
+model.add(Conv2D(4, (5,5), strides = (1,1), padding = 'valid', activation = 'tanh', use_bias = True, input_shape = (19, 19, 7)))
+model.add(Dropout(0.25))
+model.add(Conv2D(8, (3,3), strides = (1,1), padding = 'valid', activation = 'tanh', use_bias = True))
+model.add(Dropout(0.25))
+model.add(Conv2D(16, (3,3), strides = (1,1), padding = 'valid', activation = 'sigmoid', use_bias = True))
+model.add(Flatten())
+
+model.add(Dense(1, activation = 'linear'))
+#model.add(Activation('sigmoid'))
+model.compile(optimizer = 'sgd', loss = 'mean_squared_error')
+
+model.fit(x_train_s, y_train_s, batch_size = 125, epochs = 600, verbose = 2, callbacks = None, validation_split = 0.2, shuffle = True )
+########################
+model = Sequential()
+model.add(Conv2D(4, (5, 5) , padding ='valid',use_bias = True, input_shape = (19, 19, 7))) 
+model.add(Activation('relu'))
+
+model.add(Conv2D(8, (3, 3) , padding ='valid',use_bias = True))
+model.add(Activation('relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(16,(3, 3), padding ='valid',use_bias = True)) 
+model.add(Activation('relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Flatten())
+model.add(Dense(128, kernel_initializer='normal'))
+model.add(Activation('relu'))
+
+model.add(Dense(1,  kernel_initializer='normal'))
+model.add(Activation('linear'))
+model.compile(optimizer = 'sgd', loss = 'mean_squared_error')
+
+model.fit(x_train_s, y_train_s, batch_size = 125, epochs = 60, verbose = 2, callbacks = None, validation_split = 0.2, shuffle = True )
+
+
+
+### 【建立模型并训练】
+model = Sequential()
+model.add(Conv2D(8, (9,9), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True, input_shape = (33, 33, 11)))
+#model.add(MaxPooling2D(pool_size=(1, 1)))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None ))
+
+model.add(Conv2D(16, (7,7), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+#model.add(MaxPooling2D(pool_size=(1, 1)))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+
+model.add(Conv2D(32, (5,5), strides = (1,1), padding = 'valid', activation = 'relu', use_bias = True))
+#model.add(MaxPooling2D(pool_size=(1, 1)))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+
+model.add(Conv2D(64, (3,3), strides = (1,1), padding = 'valid', activation = 'sigmoid', use_bias = True))
+#model.add(MaxPooling2D(pool_size=(1,1 )))
+model.add(AveragePooling2D(pool_size=(2, 2), strides = (1,1), padding = 'valid', data_format= None))
+
+model.add(Flatten())
+model.add(Dense(500, activation = 'relu'))
+model.add(Dropout(0.25))
+model.add(Dense(100, activation = 'relu'))
+model.add(Dropout(0.25))
+model.add(Dense(20, activation = 'linear'))
+model.add(Dropout(0.25))
+model.add(Dense(1, activation = 'linear'))
+
+model.compile(optimizer = 'adam', loss = 'mean_squared_error')
+
+model.fit(x_train_1, y_train_1, batch_size = 125 , epochs = 30, verbose = 2, callbacks = None, validation_split = 0.2, shuffle = True )
+############ batch_size从训练样本量中选出125个样本进行参数设置，可理解为权重 
+############ epochs是迭代次数 （每次迭代 都会shuffle一次，即随机打乱）
+############ verbose记录
+############ validation_split选出20%的样本作为验证
+y_train_pred_val = model.predict(x_val)
+
+r2 = r2_score(y_val, y_train_pred_val)
+r = np.sqrt(r2)
+mse = metrics.mean_squared_error(y_val, y_train_pred_val)
+rmse = np.sqrt(metrics.mean_squared_error(y_val, y_train_pred_val))
+print('评价结果为:\n','R2=', r2, ';', 'R=', r, ';\n', 'MSE=', mse, ';', 'RMSE=', rmse)
+
+################
+y_train_pred = model.predict(x_train_s)
+
+r2 = r2_score(y_train_s, y_train_pred)
+r = np.sqrt(r2)
+mse = metrics.mean_squared_error(y_train_s , y_train_pred)
+rmse = np.sqrt(metrics.mean_squared_error(y_train_s, y_train_pred))
+print('评价结果为:\n','R2=', r2, ';', 'R=', r, ';\n', 'MSE=', mse, ';', 'RMSE=', rmse)
